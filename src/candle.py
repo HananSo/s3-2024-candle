@@ -34,6 +34,11 @@ class Village:
     coord: Point
     init_height: int
     burn_rate: int
+    v_id: int
+
+    @property
+    def cid(self) -> Hashable:
+        return self.v_id
 
 VillageList = Sequence[Village]
 DistMatrix = tuple[tuple[float, ...], ...]
@@ -53,10 +58,9 @@ def distance_matrix(villages: VillageList) -> DistMatrix:
 
 @dataclass
 class Component:
-    i: int
-    j: int
-    init_height: int
-    burn_rate: int
+    coord: Point
+    current_time: int
+    current_height: int
     v_id: int
 
     @property
@@ -64,14 +68,31 @@ class Component:
         return self.v_id
 
 class LocalMove:
-    ...
+    index:int
+    move_type: bool
+    insert_id: int
 
 class Solution:
+    def __init__(self, problem: Problem):
+        self.problem = problem
+        self.path = []
+        self.used = []
+        self.unused = []
+        self.burn_rate_list = []
+        self.dist_traveled = []
+        self.score = 0
+
+
     def output(self) -> str:
         """
         Generate the output string for this solution
         """
-        raise NotImplementedError
+        output_str = ""
+        output_str += str(self.objective()) + "\n"
+        for p in self.path:
+            output_str += str(p.v_id) + "\n"
+
+        return output_str
 
     def copy(self) -> Solution:
         """
@@ -82,39 +103,82 @@ class Solution:
         """
         raise NotImplementedError
 
+    def is_feasible_indexes(self, index, path) -> bool:
+        """
+        Return whether the solution is feasible or not
+        """
+        flist= []
+        for i in range(index, len(path)):
+            if self.dist_traveled[i] * self.burn_rate[i] <= path[i].init_height:
+                flist.append(1)
+            else:
+                flist.append(0)
+        return flist
+    
     def is_feasible(self) -> bool:
         """
         Return whether the solution is feasible or not
         """
-        raise NotImplementedError
+        for i in range(0, len(self.path)):
+            if self.dist_traveled[i] * self.burn_rate[i] <= self.path[i].init_height:
+                continue
+            else:
+                return False
+        return True
 
     def objective(self) -> Optional[Objective]:
         """
         Return the objective value for this solution if defined, otherwise
         should return None
         """
-        raise NotImplementedError
+        score = 0
+        for i, village in enumerate(self.path):
+            score -= (village.init_height - (self.dist_traveled[i]*village.burn_rate))
+
+        return score
 
     def lower_bound(self) -> Optional[Objective]:
         """
         Return the lower bound value for this solution if defined,
         otherwise return None
         """
-        raise NotImplementedError
+        total = self.score
+        for i, village in enumerate(self.unused):
+            vil_score = (self.dist_traveled[-1] + self.problem.distance_matrix[self.path[-1].v_id][village.v_id]) * village.burn_rate
+            if vil_score < 0:
+                continue
+            total += (vil_score * -1)
+        return total
 
     def add_moves(self) -> Iterable[Component]:
         """
         Return an iterable (generator, iterator, or iterable object)
         over all components that can be added to the solution
         """
-        raise NotImplementedError
+        move_list = []
+        for i, village in enumerate(self.unused):
+            vil_score = (self.dist_traveled[-1] + self.problem.distance_matrix[self.path[-1].v_id][village.v_id]) * village.burn_rate
+            if vil_score < 0:
+                continue
+            move_list.append(village)
+        return move_list
 
     def local_moves(self) -> Iterable[LocalMove]:
         """
         Return an iterable (generator, iterator, or iterable object)
         over all local moves that can be applied to the solution
         """
-        raise NotImplementedError
+        local_moves = []
+        for i in range(1, len(self.path)):
+            local_moves.append(LocalMove(i, 0, None))
+            for j in self.unused:
+                    
+                local_moves.append(LocalMove(i, 1, j))
+
+        
+        return local_moves
+
+    
 
     def random_local_move(self) -> Optional[LocalMove]:
         """
@@ -140,14 +204,21 @@ class Solution:
         """
         raise NotImplementedError
 
-    def add(self, component: Component) -> None:
+    def add(self, village: Village) -> None:
         """
         Add a component to the solution.
 
         Note: this invalidates any previously generated components and
         local moves.
         """
-        raise NotImplementedError
+        
+        self.used.append(village)
+        self.unused.remove(village)
+        self.dist_traveled.append(self.dist_traveled[-1] + self.problem.distance_matrix[self.path[-1].v_id][village.v_id])
+        self.score = self.objective()
+        self.burn_rate_list.append(self.burn_rate_list[-1] + village.burn_rate)
+        self.path.append(village)
+
 
     def step(self, lmove: LocalMove) -> None:
         """
@@ -156,7 +227,11 @@ class Solution:
         Note: this invalidates any previously generated components and
         local moves.
         """
-        raise NotImplementedError
+        if lmove.move_type == 1:
+            test_path = self.path.copy()
+            test_path.insert(i, j)
+            findexes = self.is_feasible_indexes(i, test_path)
+            f
 
     def objective_incr_local(self, lmove: LocalMove) -> Optional[Objective]:
         """
@@ -185,7 +260,7 @@ class Solution:
         """
         Returns an iterable to the components of a solution
         """
-        raise NotImplementedError
+        return self.path
 
 class Problem:
     def __init__(self, villages: VillageList) -> None:
@@ -201,16 +276,16 @@ class Problem:
         n = int(f.readline())
         start_village = Village(Point(map(int, f.readline().split())), 0, 0)
         villages = [start_village]
-        for _ in range(1, n):
+        for i in range(1, n):
             x, y, init_height, burn_rate = map(int, f.readline().split())
-            villages.append(Village(Point(x, y), init_height, burn_rate))
+            villages.append(Village(Point(x, y), init_height, burn_rate, i))
         return cls(n, villages)
 
     def empty_solution(self) -> Solution:
         """
         Create an empty solution (i.e. with no components).
         """
-        raise NotImplementedError
+        return Solution(self)
 
 
 if __name__ == '__main__':
