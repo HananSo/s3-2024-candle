@@ -22,6 +22,7 @@ from collections.abc import Iterable, Hashable, Sequence
 from dataclasses import dataclass
 
 import logging
+import random
 
 Objective = Any
 @dataclass
@@ -187,7 +188,9 @@ class Solution:
         Note: repeated calls to this method may return the same
         local move.
         """
-        raise NotImplementedError
+        moves = self.local_moves()
+        idx = random.randrange(0, len(moves))
+        return moves[idx]
 
     def random_local_moves_wor(self) -> Iterable[LocalMove]:
         """
@@ -195,7 +198,10 @@ class Solution:
         over all local moves (in random order) that can be applied to
         the solution.
         """
-        raise NotImplementedError
+        moves = self.local_moves()
+        shuffled_moves = random.shuffle(moves)
+        for move in shuffled_moves:
+            yield move
             
     def heuristic_add_move(self) -> Optional[Component]:
         """
