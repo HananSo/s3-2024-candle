@@ -79,7 +79,7 @@ class Solution:
         self.path = []
         self.used = []
         self.unused = []
-        self.burn_rate_list = []
+        # self.burn_rate_list = []
         self.dist_traveled = []
         self.score = 0
 
@@ -115,6 +115,12 @@ class Solution:
             else:
                 flist.append(0)
         return flist
+
+    def is_idx_feasible(self, path, idx, curr_dist):
+        if (curr_dist + self.problem.distance_matrix[path[idx-1].v_id][path[idx].v_id]) * self.burn_rate[path[idx].v_id] < path[i].init_height:
+            return True
+        else:
+            return False
     
     def is_feasible(self) -> bool:
         """
@@ -180,7 +186,6 @@ class Solution:
         return local_moves
 
     
-
     def random_local_move(self) -> Optional[LocalMove]:
         """
         Return a random local move that can be applied to the solution.
@@ -222,7 +227,7 @@ class Solution:
         self.unused.remove(village)
         self.dist_traveled.append(self.dist_traveled[-1] + self.problem.distance_matrix[self.path[-1].v_id][village.v_id])
         self.score = self.objective()
-        self.burn_rate_list.append(self.burn_rate_list[-1] + village.burn_rate)
+        # self.burn_rate_list.append(self.burn_rate_list[-1] + village.burn_rate)
         self.path.append(village)
 
 
@@ -233,11 +238,43 @@ class Solution:
         Note: this invalidates any previously generated components and
         local moves.
         """
-        if lmove.move_type == 1:
-            test_path = self.path.copy()
-            test_path.insert(i, j)
-            findexes = self.is_feasible_indexes(i, test_path)
-            f
+        if lmove.move_type == 0: #remove
+            village = self.path.pop(lmove.index)
+            self.unused.append(self.problem.villages[village.v_id])
+            self.used.remove(village)
+            new_dist_travel = self.dist_traveled[:lmove.index]
+            for i in range(lmove.index, len(self.path)):
+                new_dist_travel.append(new_dist_travel[-1] + self.problem.distance_matrix[self.path[i-1].v_id][self.path[i].v_id])
+            self.dist_traveled = new_dist_travel
+            self.score = self.objective()
+        if lmove.move_type == 1: #insert
+            self.path.insert(lmove.index, self.unused[lmove.insert_id])
+            self.path, self.dist_traveled, del_list = self.repair(self.path, lmove.index, self.dist_traveled[lmove.index])
+            used_vill = self.unused.pop(lmove.insert_id)
+            self.used.append(used_vill)
+            for vil in del_list:
+                self.unused.append(vil)
+                self.used.remove(vil)
+            
+            self.score = self.objective()
+
+    def repair(self, path, idx, curr_dist, curr_dist_list):
+        to_delete = []
+        deleted_list = []
+        for i in range(idx, len(path)):
+            if self.is_idx_feasible(path, idx, curr_dist):
+                curr_dist += self.problem.distance_matrix[path[idx-1].v_id][path[idx].v_id]
+                curr_dist_list.append(curr_dist)
+
+                continue
+            else:
+                to_delete.append(idx)
+
+        for del_idx in to_delete:
+            deleted_list.append(path.pop(del_idx))
+
+        return path, curr_dist_list, deleted_list
+
 
     def objective_incr_local(self, lmove: LocalMove) -> Optional[Objective]:
         """
@@ -245,22 +282,48 @@ class Solution:
         local move. If the objective value is not defined after
         applying the local move return None.
         """
-        raise NotImplementedError
+        path = self.path.copy()
+        if lmove.move_type == 0:
 
-    def lower_bound_incr_add(self, component: Component) -> Optional[Objective]:
+            village = path.pop(lmove.index)
+            new_dist_travel = self.dist_traveled[:lmove.index]
+            for i in range(lmove.index, len(self.path)):
+                new_dist_travel.append(new_dist_travel[-1] + self.problem.distance_matrix[path[i-1].v_id][path[i].v_id])
+
+
+        if lmove.move_type == 1:
+            path.insert(lmove.index, self.unused[lmove.insert_id])
+            path, new_dist_travel, _ = self.repair(path, lmove.index, self.dist_traveled[lmove.index])
+
+        score = 0
+        for i, village in enumerate(path):
+            score -= (village.init_height - (new_dist_travel[i]*village.burn_rate))
+        return score
+
+
+    def lower_bound_incr_add(self, village: Village) -> Optional[Objective]:
         """
         Return the lower bound increment resulting from adding a
         component. If the lower bound is not defined after adding the
         component return None.
         """
-        raise NotImplementedError
+        total = self.score + (village.init_height - (self.problem.distance_matrix[self.path[-1].v_id][village.v_id]+ self.dist_traveled[-1]) * village.burn_rate)
+        # for i, village in enumerate(self.unused):
+        #     vil_score = (self.dist_traveled[-1] + self.problem.distance_matrix[self.path[-1].v_id][village.v_id]) * village.burn_rate
+        #     if vil_score < 0:
+        #         continue
+        #     total += (vil_score * -1)
+        # return total
 
     def perturb(self, ks: int) -> None:
         """
         Perturb the solution in place. The amount of perturbation is
         controlled by the parameter ks (kick strength)
         """
-        raise NotImplementedError
+        for _ in range(ks):
+            move = self.random_local_move()
+            if move is not None:
+                self.step(move)
 
     def components(self) -> Iterable[Component]:
         """
